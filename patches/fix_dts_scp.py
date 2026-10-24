@@ -86,26 +86,41 @@ def fix_dts(root):
 
 
 def fix_scp_include(root):
-    """给 scp/rv 的 Makefile 补上 scp.h 所在目录。"""
-    mk = os.path.join(root, "drivers/misc/mediatek/scp/rv/Makefile")
-    if not os.path.isfile(mk):
-        print("[scp] WARN: %s not found" % mk)
+    """把 scp.h 放进真正需要它的目录。
+
+    drivers/misc/mediatek/scp/rv/scp_feature_define.h:9
+    drivers/misc/mediatek/scp/cm4/scp_feature_define.h:12
+        #include "scp.h"        <- 引号形式，编译器先搜当前目录
+
+    而 scp.h 实际在 ../include/scp.h。引号 include 先在本目录找，
+    找不到才走 -I 列表。最稳的做法是在每个需要它的目录里放同名软链接。
+    这比依赖各子目录的 ccflags-y 可靠，不受 Makefile 差异影响。
+    """
+    base = os.path.join(root, "drivers/misc/mediatek/scp")
+    real = os.path.join(base, "include/scp.h")
+    if not os.path.isfile(real):
+        print("[scp] WARN: %s not found, skipping" % real)
         return 0
 
-    with open(mk, encoding="utf-8", errors="surrogateescape") as f:
-        content = f.read()
+    targets = set()
+    for dirpath, _, filenames in os.walk(base):
+        if "scp_feature_define.h" not in filenames:
+            continue
+        if os.path.isfile(os.path.join(dirpath, "scp.h")):
+            continue
+        targets.add(dirpath)
 
-    if "CPH2605_SCPINC" in content:
-        print("[scp] already patched")
-        return 0
+    for d in sorted(targets):
+        link = os.path.join(d, "scp.h")
+        rel = os.path.relpath(real, d)
+        try:
+            os.symlink(rel, link)
+            print("[scp] linked %s -> %s" % (os.path.relpath(link, root), rel))
+        except OSError as e:
+            print("[scp] WARN: cannot link %s: %s" % (link, e))
 
-    line = (
-        "\n# [cph2605] scp.h lives in ../include, KCFLAGS -I does not reach here\n"
-        "ccflags-y += -I$(srctree)/drivers/misc/mediatek/scp/include  # CPH2605_SCPINC\n"
-    )
-    with open(mk, "a", encoding="utf-8", errors="surrogateescape") as f:
-        f.write(line)
-    print("[scp] appended ccflags-y include path")
+    if not targets:
+        print("[scp] nothing to link")
     return 0
 
 
