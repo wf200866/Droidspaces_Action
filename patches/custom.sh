@@ -95,11 +95,11 @@ fi
 # 都排在它们之前，压不住。OPPO/MTK 私有代码的 "set but not used" 会被
 # 提升成致命错误。用独立脚本把这几行注释掉。
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)"
-if [ -f "${REPO_DIR}/patches/kill_werror.py" ] && [ -f "${KERNEL_DIR}/Makefile" ]; then
-    python3 "${REPO_DIR}/patches/kill_werror.py" "${KERNEL_DIR}/Makefile" \
+if [ -f "${REPO_DIR}/patches/kill_werror.py" ]; then
+    python3 "${REPO_DIR}/patches/kill_werror.py" "${KERNEL_DIR}" \
         || echo "[vendor] WARN: kill_werror.py failed"
 else
-    echo "[vendor] WARN: kill_werror.py or Makefile missing, skipping"
+    echo "[vendor] WARN: kill_werror.py missing, skipping"
 fi
 
 echo "[vendor] wiring complete"
