@@ -113,4 +113,16 @@ else
     echo "[vendor] WARN: inject_noerror.py or Makefile.lib missing"
 fi
 
+# ------------------------------------- 去掉无 cust.dtsi 的 dts + 补 scp.h 路径 ---
+# 原厂 defconfig 要编 48 个 dtb，但每个 .dts 都 include OPPO 不发布的
+# oplus6833_20015/cust.dtsi。我们不生产 dtb（dtb 段从原厂 boot.img 原样复制），
+# 所以从编译列表里摘掉即可。同时给 scp/rv 补上 scp.h 的 include 路径，
+# 因为 KCFLAGS 里的 -I 不会进入头文件搜索路径。
+if [ -f "${REPO_DIR}/patches/fix_dts_scp.py" ]; then
+    python3 "${REPO_DIR}/patches/fix_dts_scp.py" "${KERNEL_DIR}" \
+        || echo "[vendor] WARN: fix_dts_scp.py failed"
+else
+    echo "[vendor] WARN: fix_dts_scp.py missing"
+fi
+
 echo "[vendor] wiring complete"
