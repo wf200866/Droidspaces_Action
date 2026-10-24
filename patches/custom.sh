@@ -89,4 +89,17 @@ if [ "${fail}" != "0" ]; then
     exit 1
 fi
 
+# ------------------------------------------------------------ 关掉 -Werror ---
+# 4.19 Makefile 第 979-991 行有 5 条 cc-option 形式的 -Werror 探测，
+# 它们追加在 KBUILD_CFLAGS 末尾，因此 KCFLAGS 里的 -Wno-xxx / -Wno-error
+# 都排在它们之前，压不住。OPPO/MTK 私有代码的 "set but not used" 会被
+# 提升成致命错误。用独立脚本把这几行注释掉。
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)"
+if [ -f "${REPO_DIR}/patches/kill_werror.py" ] && [ -f "${KERNEL_DIR}/Makefile" ]; then
+    python3 "${REPO_DIR}/patches/kill_werror.py" "${KERNEL_DIR}/Makefile" \
+        || echo "[vendor] WARN: kill_werror.py failed"
+else
+    echo "[vendor] WARN: kill_werror.py or Makefile missing, skipping"
+fi
+
 echo "[vendor] wiring complete"
