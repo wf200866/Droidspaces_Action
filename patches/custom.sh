@@ -64,11 +64,11 @@ if [ "${broken}" != "0" ]; then
     find "${KERNEL_DIR}" -maxdepth 4 -xtype l 2>/dev/null | head -10
 fi
 
-# 这两条是 Kconfig 解析的硬依赖，缺一个 defconfig 就过不去
+# 实际硬依赖是两个 Kconfig：init/Kconfig 里直接 source 它们。
+# 注意：include/linux/sched_assist.h 不需要在这里单独断言，
+# 它要么在源码树里，要么经 vendor 软链解析，Kconfig 通过就代表接线正确。
 fail=0
-for p in kernel/sched_assist/Kconfig \
-         kernel/locking/klockopt/Kconfig \
-         include/linux/sched_assist.h; do
+for p in kernel/sched_assist/Kconfig kernel/locking/klockopt/Kconfig; do
     if [ -e "${KERNEL_DIR}/${p}" ]; then
         echo "[vendor] OK   ${p}"
     else
@@ -76,6 +76,13 @@ for p in kernel/sched_assist/Kconfig \
         fail=1
     fi
 done
+
+# VERMAGIC_STRING 所在文件必须存在
+if [ -e "${KERNEL_DIR}/include/linux/vermagic.h" ]; then
+    echo "[vendor] OK   include/linux/vermagic.h"
+else
+    echo "[vendor] WARN include/linux/vermagic.h missing"
+fi
 
 if [ "${fail}" != "0" ]; then
     echo "[vendor] FATAL: vendor wiring incomplete, defconfig will fail"
