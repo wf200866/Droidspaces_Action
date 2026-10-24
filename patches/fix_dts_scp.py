@@ -86,41 +86,71 @@ def fix_dts(root):
 
 
 def fix_scp_include(root):
-    """把 scp.h 放进真正需要它的目录。
+    """把 scp/include/ 下的全部头文件铺到所有会 include 它们的目录。
 
-    drivers/misc/mediatek/scp/rv/scp_feature_define.h:9
-    drivers/misc/mediatek/scp/cm4/scp_feature_define.h:12
-        #include "scp.h"        <- 引号形式，编译器先搜当前目录
+    为什么不能只靠文本扫描
+    ----------------------
+    引用链是闭包式的：
+        rv/scp_feature_define.h  --include "scp.h"-->  scp.h
+        scp.h                    --include "scp_rv.h"--> scp_rv.h
 
-    而 scp.h 实际在 ../include/scp.h。引号 include 先在本目录找，
-    找不到才走 -I 列表。最稳的做法是在每个需要它的目录里放同名软链接。
-    这比依赖各子目录的 ccflags-y 可靠，不受 Makefile 差异影响。
+    两个都是引号形式，编译器以「当前文件所在目录」为第一搜索路径。
+    一旦 scp.h 通过软链出现在 rv/ 下，rv/ 就必须同时能看到 scp_rv.h，
+    否则报 fatal error: 'scp_rv.h' file not found。
+    而 scp_rv.h 这个名字只出现在 include/ 里的 scp.h 内部，
+    从 rv/ 下的 .c 文件扫不到，所以文本扫描会漏。
+
+    做法：凡是 include/ 里任意头文件被某目录引用，就把 include/ 下
+    全部头文件都链到那个目录。数量只有 3 个，铺开无副作用。
     """
     base = os.path.join(root, "drivers/misc/mediatek/scp")
-    real = os.path.join(base, "include/scp.h")
-    if not os.path.isfile(real):
-        print("[scp] WARN: %s not found, skipping" % real)
+    inc = os.path.join(base, "include")
+    if not os.path.isdir(inc):
+        print("[scp] WARN: %s not found, skipping" % inc)
         return 0
 
+    headers = sorted(f for f in os.listdir(inc) if f.endswith(".h"))
+    if not headers:
+        print("[scp] WARN: no headers in %s" % inc)
+        return 0
+    print("[scp] include/ has %d header(s): %s" % (len(headers), ", ".join(headers)))
+
+    # 找出所有引用了 include/ 里任意头文件的目录（引号形式）
+    pat = re.compile(
+        r'#include\s+"(' + "|".join(re.escape(h) for h in headers) + r')"'
+    )
     targets = set()
     for dirpath, _, filenames in os.walk(base):
-        if "scp_feature_define.h" not in filenames:
+        if os.path.abspath(dirpath) == os.path.abspath(inc):
             continue
-        if os.path.isfile(os.path.join(dirpath, "scp.h")):
-            continue
-        targets.add(dirpath)
+        for fn in filenames:
+            if not fn.endswith((".c", ".h")):
+                continue
+            try:
+                with open(os.path.join(dirpath, fn), encoding="utf-8",
+                          errors="surrogateescape") as f:
+                    content = f.read()
+            except OSError:
+                continue
+            if pat.search(content):
+                targets.add(dirpath)
+                break
 
+    linked = 0
     for d in sorted(targets):
-        link = os.path.join(d, "scp.h")
-        rel = os.path.relpath(real, d)
-        try:
-            os.symlink(rel, link)
-            print("[scp] linked %s -> %s" % (os.path.relpath(link, root), rel))
-        except OSError as e:
-            print("[scp] WARN: cannot link %s: %s" % (link, e))
+        for h in headers:
+            link = os.path.join(d, h)
+            if os.path.lexists(link):
+                continue
+            rel = os.path.relpath(os.path.join(inc, h), d)
+            try:
+                os.symlink(rel, link)
+                linked += 1
+            except OSError as e:
+                print("[scp] WARN: cannot link %s: %s" % (link, e))
+        print("[scp] staged %d header(s) into %s" % (len(headers), os.path.relpath(d, root)))
 
-    if not targets:
-        print("[scp] nothing to link")
+    print("[scp] total links created: %d" % linked)
     return 0
 
 
