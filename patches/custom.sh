@@ -102,4 +102,15 @@ else
     echo "[vendor] WARN: kill_werror.py missing, skipping"
 fi
 
+# ------------------------------------------- 编译命令末端追加 -Wno-error ---
+# 全树清理 ccflags-y 仍会漏（subdir-ccflags-y、条件形式、CFLAGS_xxx 等），
+# 直接在 scripts/Makefile.lib 的 c_flags 末端加 -Wno-error 兜底。
+LIB="${KERNEL_DIR}/scripts/Makefile.lib"
+if [ -f "${REPO_DIR}/patches/inject_noerror.py" ] && [ -f "${LIB}" ]; then
+    python3 "${REPO_DIR}/patches/inject_noerror.py" "${LIB}" \
+        || echo "[vendor] WARN: inject_noerror.py failed"
+else
+    echo "[vendor] WARN: inject_noerror.py or Makefile.lib missing"
+fi
+
 echo "[vendor] wiring complete"
